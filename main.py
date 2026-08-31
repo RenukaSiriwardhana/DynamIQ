@@ -16,25 +16,23 @@ from dotenv import load_dotenv
 
 load_dotenv()
 API_KEY = os.getenv("GEMINI_API_KEY")
-
-# Google GenAI Client එක නිවැරදිව සකස් කිරීම
 client = genai.Client(api_key=API_KEY)
-
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="DynamIQ - AI-Powered CRM & Dynamic Pricing Assistant")
+
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000", 
-        "http://127.0.0.1:3000",
-        "https://dynam-iq-rny3.vercel.app"
+        "http://127.0.0.1:3000","https://dynam-iq-rny3.vercel.app"
     ], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 def get_db():
     db = SessionLocal()
@@ -55,19 +53,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     hashed_bytes = hashed_password.encode('utf-8')
     return bcrypt.checkpw(pwd_bytes, hashed_bytes)
 
-# නම හෝ ID එක මඟින් කස්ටමර්ව සෙවීම (더 ආරක්ෂිත ක්‍රමයට වැඩි දියුණු කළ හැටි)
 def get_customer_by_id_or_name(identifier: str, db: Session):
-    if not identifier:
-        return None
-    identifier_str = str(identifier).strip()
-    if identifier_str.isdigit():
-        return db.query(models.Customer).filter(models.Customer.id == int(identifier_str)).first()
+    if identifier.isdigit():
+        return db.query(models.Customer).filter(models.Customer.id == int(identifier)).first()
     else:
-        # පළමුව හරියටම නම සමානද බලයි, නැත්නම් ilike පාවිච්චි කරයි
-        customer = db.query(models.Customer).filter(models.Customer.name.ilike(identifier_str)).first()
-        if not customer:
-            customer = db.query(models.Customer).filter(models.Customer.name.ilike(f"%{identifier_str}%")).first()
-        return customer
+        return db.query(models.Customer).filter(models.Customer.name.ilike(f"%{identifier}%")).first()
 
 def send_real_email(to_email: str, subject: str, body: str):
     sender_email = "YOUR_GMAIL@gmail.com"  
@@ -161,7 +151,7 @@ def get_dynamic_pricing(request: schemas.PricingRequestAlt, db: Session = Depend
 
     try:
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-1.5-pro',
             contents=prompt,
         )
         discount_str = response.text.strip()
@@ -222,7 +212,6 @@ The DynamIQ Team"""
         "generated_email": email_text,
         "auto_status": status
     }
-
 # ==========================================
 # 1. PRODUCT RECOMMENDER ENDPOINT WITH FALLBACK
 # ==========================================
@@ -244,6 +233,7 @@ def recommend_products(request: schemas.RecommendationRequestAlt, db: Session = 
             contents=prompt,
         )
         recommendations = [item.strip() for item in response.text.split(',')]
+        # Keep only top 3
         recommendations = recommendations[:3]
     except Exception as e:
         print(f"API Limit reached for Recommender, using smart fallback. Error: {e}")
@@ -253,6 +243,7 @@ def recommend_products(request: schemas.RecommendationRequestAlt, db: Session = 
         "customer_name": customer.name,
         "recommended_products": recommendations
     }
+
 
 # ==========================================
 # 2. RETENTION AI ENDPOINT WITH FALLBACK
@@ -286,6 +277,7 @@ def get_retention_offer(request: schemas.RetentionRequestAlt, db: Session = Depe
         )
         text = response.text
         
+        # Parse the output
         risk_match = re.search(r"Risk:\s*(.*)", text)
         offer_match = re.search(r"Offer:\s*(.*)", text)
         msg_match = re.search(r"Message:\s*(.*)", text)

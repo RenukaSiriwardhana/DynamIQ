@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react";
 import dummyCustomers from "./data.json"; 
 
-// Render එකේ Live Backend URL එක මෙහි ස්වයංක්‍රීයව ක්‍රියාත්මක වේ
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://dynamiq-4aa7.onrender.com";
 
 export default function App() {
@@ -49,6 +48,13 @@ export default function App() {
   const [retData, setRetData] = useState({ customer_identifier: "" }); 
   const [retResult, setRetResult] = useState<any>(null);
   const [retLoading, setRetLoading] = useState(false);
+
+  // New Customer Form States
+  const [newCustName, setNewCustName] = useState("");
+  const [newCustEmail, setNewCustEmail] = useState("");
+  const [newCustSpend, setNewCustSpend] = useState("");
+  const [newCustOrders, setNewCustOrders] = useState("");
+  const [custMessage, setCustMessage] = useState("");
 
   const extractError = (data: any) => {
     if (typeof data.detail === "string") return data.detail;
@@ -102,69 +108,68 @@ export default function App() {
     setIsLoggedIn(false); setAuthEmail(""); setAuthPassword(""); setAuthMode("start"); setActiveTab("Overview");
   };
 
+  // Add Customer Handler
+  const handleAddCustomer = async (e: any) => {
+    e.preventDefault();
+    setCustMessage("Saving customer to database...");
+    try {
+      const response = await fetch(`${API_BASE_URL}/customers/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newCustName,
+          email: newCustEmail,
+          total_spend: parseFloat(newCustSpend) || 0,
+          total_orders: parseInt(newCustOrders) || 0
+        }),
+      });
+      if (response.ok) {
+        setCustMessage("Customer successfully added to database!");
+        setNewCustName(""); setNewCustEmail(""); setNewCustSpend(""); setNewCustOrders("");
+      } else {
+        const err = await response.json();
+        setCustMessage(`Error: ${extractError(err)}`);
+      }
+    } catch (err) {
+      setCustMessage("Error: Server connection failed.");
+    }
+  };
+
   const handlePricingSubmit = async (e: any) => {
     e.preventDefault(); 
     setPricingLoading(true); setPricingResult(null);
-
-    const customer = dummyCustomers.find((c: any) => c.name.toLowerCase().includes(pricingData.customer_identifier.toLowerCase()) || c.id === pricingData.customer_identifier);
-
-    if (!customer) {
-      alert("Customer not found in data.json! Please enter a valid name.");
-      setPricingLoading(false); return;
-    }
 
     const sellingPrice = parseFloat(pricingData.current_order_amount);
     const costPrice = parseFloat(pricingData.cost_price);
     const profit = sellingPrice - costPrice;
 
     if (profit <= 0) {
-      alert(`Cost price (Rs.${costPrice}) is equal to or higher than Selling price (Rs.${sellingPrice})! Cannot give a discount and make a loss.`);
+      alert(`Cost price (Rs.${costPrice}) is higher than Selling price (Rs.${sellingPrice})!`);
       setPricingLoading(false); return;
     }
-
-    const maxDiscountPct = (profit / sellingPrice) * 100;
-    const status = getLoyaltyStatus(customer.total_spend);
 
     try {
       const response = await fetch(`${API_BASE_URL}/dynamic-pricing/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customer_identifier: customer.name, current_order_amount: sellingPrice }),
+        body: JSON.stringify({ customer_identifier: pricingData.customer_identifier, current_order_amount: sellingPrice }),
       });
 
-      let finalDiscount = 0;
-
-      if (response.ok) {
-        const data = await response.json();
-        finalDiscount = parseFloat(data.suggested_discount_percentage);
-      } else {
-        throw new Error("Backend failed or Quota Exceeded");
+      if (!response.ok) {
+        const err = await response.json();
+        alert(`Error: ${extractError(err)}`);
+        setPricingLoading(false);
+        return;
       }
 
-      if (finalDiscount >= maxDiscountPct) {
-        finalDiscount = Math.floor(maxDiscountPct * 0.8); 
-      }
-
+      const data = await response.json();
       setPricingResult({
-        customer_name: customer.name,
-        loyalty_status: status,
-        suggested_discount_percentage: finalDiscount,
-        final_price: sellingPrice - (sellingPrice * finalDiscount / 100)
+        customer_name: data.customer_name,
+        loyalty_status: data.loyalty_status,
+        suggested_discount_percentage: parseFloat(data.suggested_discount_percentage),
+        final_price: data.final_price
       });
-
     } catch (err) {
-      let simulatedDiscount = 0;
-      if (status === "Platinum") simulatedDiscount = maxDiscountPct * 0.6;
-      else if (status === "Gold") simulatedDiscount = maxDiscountPct * 0.4;
-      else simulatedDiscount = maxDiscountPct * 0.15;
-
-      simulatedDiscount = Math.floor(simulatedDiscount);
-
-      setPricingResult({
-        customer_name: customer.name,
-        loyalty_status: status,
-        suggested_discount_percentage: simulatedDiscount,
-        final_price: sellingPrice - (sellingPrice * simulatedDiscount / 100)
-      });
+      alert("Server connection failed");
     }
     setPricingLoading(false);
   };
@@ -209,22 +214,15 @@ export default function App() {
     const parsedSubject = subjectMatch ? subjectMatch[1].trim() : "Exclusive Offer from DynamIQ!";
     const cleanBody = text.replace(/SUBJECT:\s*.*\n?/i, '').replace(/BODY:\s*/i, '').trim();
 
-    const customer:any = dummyCustomers.find((c:any) => c.name.toLowerCase().includes(emailData.customer_identifier.toLowerCase()) || c.id === emailData.customer_identifier);
-    const toEmail = customer ? customer.email : "";
-
-    window.location.href = `mailto:${toEmail}?subject=${encodeURIComponent(parsedSubject)}&body=${encodeURIComponent(cleanBody)}`;
+    window.location.href = `mailto:?subject=${encodeURIComponent(parsedSubject)}&body=${encodeURIComponent(cleanBody)}`;
   };
 
   const handleRecSubmit = async (e: any) => {
     e.preventDefault(); setRecLoading(true); setRecResult(null);
-    const foundCustomer:any = dummyCustomers.find((c:any) => c.name.toLowerCase().includes(recData.customer_identifier.toLowerCase()) || c.id === recData.customer_identifier);
-    if (!foundCustomer) { alert("Customer not found in data.json!"); setRecLoading(false); return; }
-
     try {
-      const purchasesArray = foundCustomer.recent_purchases.split(",").map((item:string) => item.trim());
       const response = await fetch(`${API_BASE_URL}/recommend-products/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customer_identifier: foundCustomer.name, recent_purchases: purchasesArray }),
+        body: JSON.stringify({ customer_identifier: recData.customer_identifier, recent_purchases: ["Brake Pad", "Oil Filter"] }),
       });
       if (response.ok) setRecResult(await response.json());
       else { const err = await response.json(); alert(`Error: ${extractError(err)}`); }
@@ -234,13 +232,10 @@ export default function App() {
 
   const handleRetentionSubmit = async (e: any) => {
     e.preventDefault(); setRetLoading(true); setRetResult(null);
-    const foundCustomer:any = dummyCustomers.find((c:any) => c.name.toLowerCase().includes(retData.customer_identifier.toLowerCase()) || c.id === retData.customer_identifier);
-    if (!foundCustomer) { alert("Customer not found in data.json!"); setRetLoading(false); return; }
-
     try {
       const response = await fetch(`${API_BASE_URL}/retention-offer/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customer_identifier: foundCustomer.name, days_since_last_purchase: foundCustomer.days_since_last_purchase }),
+        body: JSON.stringify({ customer_identifier: retData.customer_identifier, days_since_last_purchase: 45 }),
       });
       if (response.ok) setRetResult(await response.json());
       else { const err = await response.json(); alert(`Error: ${extractError(err)}`); }
@@ -356,6 +351,7 @@ export default function App() {
               <div className="flex-1 space-y-2">
                 {[
                   { id: 'Overview', icon: 'dashboard', label: 'Overview' },
+                  { id: 'AddCustomer', icon: 'person_add', label: 'Add Customer' },
                   { id: 'Sales', icon: 'trending_up', label: 'AI Pricing' },
                   { id: 'Marketing', icon: 'mail', label: 'Marketing' },
                   { id: 'Retention', icon: 'psychology', label: 'Retention' }
@@ -424,6 +420,37 @@ export default function App() {
                   </div>
                 )}
 
+                {/* ADD CUSTOMER TAB */}
+                {activeTab === "AddCustomer" && (
+                  <div className="animate-fade-in flex flex-col gap-4 max-w-xl mx-auto w-full">
+                    <div><h1 className="text-2xl font-bold text-white">Add New Customer</h1><p className="text-sm text-gray-400">Register a customer to the live database for AI processing.</p></div>
+                    <div className="bg-[#161925] border border-[#2d3348] rounded-xl p-6 shadow-xl">
+                      {custMessage && <div className={`mb-4 p-3 rounded-lg text-xs font-medium border ${custMessage.includes("Error") ? "bg-red-950/50 text-red-400 border-red-800" : "bg-[#4edea3]/10 text-[#4edea3] border-[#4edea3]/50"}`}>{custMessage}</div>}
+                      <form onSubmit={handleAddCustomer} className="space-y-4">
+                        <div>
+                          <label className="text-[10px] text-gray-400 uppercase font-semibold block mb-1">Customer Name</label>
+                          <input type="text" value={newCustName} onChange={(e) => setNewCustName(e.target.value)} required className="w-full bg-[#0d0f17] border border-[#2d3348] text-sm text-white rounded-lg py-3 px-3 outline-none focus:border-[#00d4ff]" placeholder="e.g. Nimal Perera" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-400 uppercase font-semibold block mb-1">Email Address</label>
+                          <input type="email" value={newCustEmail} onChange={(e) => setNewCustEmail(e.target.value)} required className="w-full bg-[#0d0f17] border border-[#2d3348] text-sm text-white rounded-lg py-3 px-3 outline-none focus:border-[#00d4ff]" placeholder="nimal@example.com" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-[10px] text-[#4edea3] uppercase font-semibold block mb-1">Total Spend (Rs.)</label>
+                            <input type="number" value={newCustSpend} onChange={(e) => setNewCustSpend(e.target.value)} required className="w-full bg-[#0d0f17] border border-[#4edea3]/50 text-sm font-bold text-[#4edea3] rounded-lg py-3 px-3 outline-none focus:border-[#4edea3]" placeholder="150000" />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-[#00d4ff] uppercase font-semibold block mb-1">Total Orders</label>
+                            <input type="number" value={newCustOrders} onChange={(e) => setNewCustOrders(e.target.value)} required className="w-full bg-[#0d0f17] border border-[#00d4ff]/50 text-sm font-bold text-[#00d4ff] rounded-lg py-3 px-3 outline-none focus:border-[#00d4ff]" placeholder="5" />
+                          </div>
+                        </div>
+                        <button type="submit" className="w-full bg-gradient-to-r from-[#00d4ff] to-[#008fb3] text-white font-bold py-3 rounded-lg text-sm active:scale-95 transition-transform shadow-[0_0_10px_rgba(0,212,255,0.3)] cursor-pointer mt-4">Save Customer to Database</button>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
                 {activeTab === "Sales" && (
                   <div className="animate-fade-in flex flex-col gap-4">
                     <div><h1 className="text-2xl font-bold text-white">AI Pricing</h1><p className="text-sm text-gray-400">Dynamic discount generator with Profit Protection.</p></div>
@@ -459,9 +486,9 @@ export default function App() {
                     
                     <div className="bg-[#161925] border border-[#2d3348] rounded-xl p-5">
                       <h3 className="text-sm font-bold text-[#00d4ff] mb-1 flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">mail</span> AI Auto-Emailer</h3>
-                      <p className="text-[10px] text-gray-500 mb-3">(AI predicts discount based on data.json)</p>
+                      <p className="text-[10px] text-gray-500 mb-3">(AI predicts discount based on database)</p>
                       <form onSubmit={handleEmailSubmit} className="space-y-3">
-                        <input type="text" value={emailData.customer_identifier} onChange={(e) => setEmailData({...emailData, customer_identifier: e.target.value})} className="w-full bg-[#0d0f17] border border-[#2d3348] text-sm text-white rounded-lg py-2.5 px-3 outline-none focus:border-[#00d4ff]" placeholder="Customer ID or Name (e.g. Kasun)"/>
+                        <input type="text" value={emailData.customer_identifier} onChange={(e) => setEmailData({...emailData, customer_identifier: e.target.value})} className="w-full bg-[#0d0f17] border border-[#2d3348] text-sm text-white rounded-lg py-2.5 px-3 outline-none focus:border-[#00d4ff]" placeholder="Customer Name (e.g. Nimal)"/>
                         <button type="submit" className="w-full bg-gradient-to-r from-[#00d4ff] to-[#008fb3] text-[#d9dce9] font-bold py-3 rounded-lg text-sm active:scale-95 transition-transform flex justify-center items-center shadow-[0_0_10px_rgba(0,212,255,0.3)] cursor-pointer">
                            {emailLoading ? "Generating..." : "Predict Discount & Generate"}
                         </button>
@@ -485,7 +512,7 @@ export default function App() {
                     <div className="bg-[#161925] border border-[#2d3348] rounded-xl p-5">
                       <h3 className="text-sm font-bold text-[#4edea3] mb-1 flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">psychology</span> Recommender</h3>
                       <form onSubmit={handleRecSubmit} className="space-y-3 mt-3">
-                        <input type="text" value={recData.customer_identifier} onChange={(e) => setRecData({...recData, customer_identifier: e.target.value})} className="w-full bg-[#0d0f17] border border-[#2d3348] text-sm text-white rounded-lg py-2.5 px-3 outline-none focus:border-[#4edea3]" placeholder="Customer Name (e.g. Suneth)"/>
+                        <input type="text" value={recData.customer_identifier} onChange={(e) => setRecData({...recData, customer_identifier: e.target.value})} className="w-full bg-[#0d0f17] border border-[#2d3348] text-sm text-white rounded-lg py-2.5 px-3 outline-none focus:border-[#4edea3]" placeholder="Customer Name (e.g. Nimal)"/>
                         <button type="submit" className="w-full bg-gradient-to-r from-[#4edea3] to-[#2fb87a] text-[#e9ebf3] font-bold py-3 rounded-lg text-sm transition-all active:scale-95 shadow-[0_0_10px_rgba(78,222,163,0.3)] cursor-pointer">
                           {recLoading ? "Analyzing Data..." : "Predict Next Products"}
                         </button>
@@ -531,6 +558,7 @@ export default function App() {
             <div className="md:hidden fixed bottom-0 left-0 w-full bg-[#161925] border-t border-[#2d3348] z-[100] px-2 py-2 flex justify-between items-center pb-safe" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
               {[
                 { id: 'Overview', icon: 'dashboard', label: 'Home' },
+                { id: 'AddCustomer', icon: 'person_add', label: 'Add' },
                 { id: 'Sales', icon: 'trending_up', label: 'Sales' },
                 { id: 'Marketing', icon: 'mail', label: 'Promo' },
                 { id: 'Retention', icon: 'psychology', label: 'Risk' }
