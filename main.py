@@ -13,6 +13,8 @@ import json
 import bcrypt
 import os
 from dotenv import load_dotenv
+from typing import List
+
 
 load_dotenv()
 API_KEY = os.getenv("GEMINI_API_KEY")
@@ -34,6 +36,22 @@ app.add_middleware(
 )
 
 
+@app.post("/customers/bulk/")
+def create_bulk_customers(customers: List[schemas.CustomerCreate], db: Session = Depends(get_db)):
+    added_count = 0
+    for cust in customers:
+        existing = db.query(models.Customer).filter(models.Customer.email == cust.email).first()
+        if not existing:
+            new_customer = models.Customer(
+                name=cust.name,
+                email=cust.email,
+                total_spend=cust.total_spend,
+                total_orders=cust.total_orders
+            )
+            db.add(new_customer)
+            added_count += 1
+    db.commit()
+    return {"message": f"Successfully added {added_count} new customers!"}
 def get_db():
     db = SessionLocal()
     try:
