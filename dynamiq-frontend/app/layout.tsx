@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 // 2. Metadata for SEO & PWA (Manifest linked here)
 export const metadata: Metadata = {
-  title: "DynamIQ Auto-Parts - Smart AI CRM",
+  title: "DynamIQ - Smart AI CRM",
   description: "AI-powered CRM for Sri Lankan Spare Parts Dealerships.",
   manifest: "/manifest.json",
   icons: {
