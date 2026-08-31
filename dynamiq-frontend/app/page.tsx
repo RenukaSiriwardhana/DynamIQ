@@ -2,6 +2,9 @@
 import { useState, useEffect } from "react";
 import dummyCustomers from "./data.json"; 
 
+// Render එකේ Live Backend URL එක මෙහි ස්වයංක්‍රීයව ක්‍රියාත්මක වේ
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://dynamiq-4aa7.onrender.com";
+
 export default function App() {
   useEffect(() => {
     const script = document.createElement("script");
@@ -31,7 +34,6 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState("Overview");
   
-  // Pricing state updated with COST PRICE
   const [pricingData, setPricingData] = useState({ customer_identifier: "", current_order_amount: "", cost_price: "" });
   const [pricingResult, setPricingResult] = useState<any>(null);
   const [pricingLoading, setPricingLoading] = useState(false);
@@ -54,7 +56,6 @@ export default function App() {
     return "Something went wrong!";
   };
 
-  // --- DYNAMIC LOYALTY CALCULATOR ---
   const getLoyaltyStatus = (spend: number) => {
     if (spend >= 500000) return "Platinum";
     if (spend >= 150000) return "Gold";
@@ -66,7 +67,7 @@ export default function App() {
     if (!authName || !authEmail || !authPassword) { setAuthMessage("Error: Fill all fields."); return; }
     setAuthMessage("Creating your account...");
     try {
-      const response = await fetch("http://127.0.0.1:8000/register/", {
+      const response = await fetch(`${API_BASE_URL}/register/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: authName, email: authEmail, password: authPassword }),
       });
@@ -84,7 +85,7 @@ export default function App() {
     if (!authEmail || !authPassword) { setAuthMessage("Error: Please enter credentials."); return; }
     setAuthMessage("Verifying credentials...");
     try {
-      const response = await fetch("http://127.0.0.1:8000/login/", {
+      const response = await fetch(`${API_BASE_URL}/login/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: authEmail, password: authPassword }),
       });
@@ -101,12 +102,10 @@ export default function App() {
     setIsLoggedIn(false); setAuthEmail(""); setAuthPassword(""); setAuthMode("start"); setActiveTab("Overview");
   };
 
-  // --- SMART PRICING LOGIC (Protects Profit Margin + Reads from data.json) ---
   const handlePricingSubmit = async (e: any) => {
     e.preventDefault(); 
     setPricingLoading(true); setPricingResult(null);
 
-    // 1. Read directly from data.json
     const customer = dummyCustomers.find((c: any) => c.name.toLowerCase().includes(pricingData.customer_identifier.toLowerCase()) || c.id === pricingData.customer_identifier);
 
     if (!customer) {
@@ -114,7 +113,6 @@ export default function App() {
       setPricingLoading(false); return;
     }
 
-    // 2. Profit Margin Validation
     const sellingPrice = parseFloat(pricingData.current_order_amount);
     const costPrice = parseFloat(pricingData.cost_price);
     const profit = sellingPrice - costPrice;
@@ -124,13 +122,11 @@ export default function App() {
       setPricingLoading(false); return;
     }
 
-    // Maximum discount percentage we can afford (Profit Margin)
     const maxDiscountPct = (profit / sellingPrice) * 100;
     const status = getLoyaltyStatus(customer.total_spend);
 
     try {
-      // 3. Try fetching from Backend API
-      const response = await fetch("http://127.0.0.1:8000/dynamic-pricing/", {
+      const response = await fetch(`${API_BASE_URL}/dynamic-pricing/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customer_identifier: customer.name, current_order_amount: sellingPrice }),
       });
@@ -144,7 +140,6 @@ export default function App() {
         throw new Error("Backend failed or Quota Exceeded");
       }
 
-      // PROFIT PROTECTION LOGIC: AI discount MUST NOT exceed 80% of our total profit margin!
       if (finalDiscount >= maxDiscountPct) {
         finalDiscount = Math.floor(maxDiscountPct * 0.8); 
       }
@@ -157,11 +152,10 @@ export default function App() {
       });
 
     } catch (err) {
-      // 4. SMART FALLBACK IF API FAILS (Uses data.json + Tiers to calculate logical discount)
       let simulatedDiscount = 0;
-      if (status === "Platinum") simulatedDiscount = maxDiscountPct * 0.6; // Give 60% of profit as discount
-      else if (status === "Gold") simulatedDiscount = maxDiscountPct * 0.4; // Give 40% of profit as discount
-      else simulatedDiscount = maxDiscountPct * 0.15; // Give 15% of profit as discount
+      if (status === "Platinum") simulatedDiscount = maxDiscountPct * 0.6;
+      else if (status === "Gold") simulatedDiscount = maxDiscountPct * 0.4;
+      else simulatedDiscount = maxDiscountPct * 0.15;
 
       simulatedDiscount = Math.floor(simulatedDiscount);
 
@@ -180,7 +174,7 @@ export default function App() {
     if(!emailData.customer_identifier) { alert("Please enter Customer ID/Name!"); return; }
     setEmailLoading(true); setEmailResult(null);
     try {
-      const priceRes = await fetch("http://127.0.0.1:8000/dynamic-pricing/", {
+      const priceRes = await fetch(`${API_BASE_URL}/dynamic-pricing/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customer_identifier: emailData.customer_identifier, current_order_amount: 5000 }), 
       });
@@ -193,7 +187,7 @@ export default function App() {
       const priceData = await priceRes.json();
       const predictedDiscount = parseFloat(priceData.suggested_discount_percentage.replace('%', '')) || 5;
 
-      const emailRes = await fetch("http://127.0.0.1:8000/generate-promo-email/", {
+      const emailRes = await fetch(`${API_BASE_URL}/generate-promo-email/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customer_identifier: emailData.customer_identifier, discount_percentage: predictedDiscount }),
       });
@@ -228,7 +222,7 @@ export default function App() {
 
     try {
       const purchasesArray = foundCustomer.recent_purchases.split(",").map((item:string) => item.trim());
-      const response = await fetch("http://127.0.0.1:8000/recommend-products/", {
+      const response = await fetch(`${API_BASE_URL}/recommend-products/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customer_identifier: foundCustomer.name, recent_purchases: purchasesArray }),
       });
@@ -244,7 +238,7 @@ export default function App() {
     if (!foundCustomer) { alert("Customer not found in data.json!"); setRetLoading(false); return; }
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/retention-offer/", {
+      const response = await fetch(`${API_BASE_URL}/retention-offer/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customer_identifier: foundCustomer.name, days_since_last_purchase: foundCustomer.days_since_last_purchase }),
       });
@@ -254,7 +248,6 @@ export default function App() {
     setRetLoading(false);
   };
 
-  // Sort customers by total_spend and dynamically assign Loyalty Status for Dashboard
   const sortedTopCustomers = [...dummyCustomers]
     .sort((a:any, b:any) => b.total_spend - a.total_spend)
     .slice(0, 10)
@@ -284,7 +277,6 @@ export default function App() {
       </div>
 
       <div className="relative z-10 w-full min-h-screen flex flex-col">
-        {/* 1. LANDING PAGE */}
         {!isLoggedIn && authMode === "start" && (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
             <div className="max-w-4xl mx-auto space-y-8 animate-fade-in relative z-20">
@@ -304,7 +296,6 @@ export default function App() {
           </div>
         )}
 
-        {/* 2. AUTHENTICATION */}
         {!isLoggedIn && (authMode === "login" || authMode === "register") && (
           <div className="flex-1 flex items-center justify-center p-4">
             <main className="w-full max-w-md animate-fade-in relative z-20">
@@ -355,7 +346,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ==================== 3. APP DASHBOARD ==================== */}
         {isLoggedIn && (
           <div className="flex-1 flex flex-col md:flex-row relative">
             <nav className="hidden md:flex flex-col p-6 bg-[#161925] h-full min-h-screen w-72 border-r border-[#2d3348] sticky top-0">
@@ -390,7 +380,6 @@ export default function App() {
             <main className="flex-1 flex flex-col pb-[90px] md:pb-6 relative z-10 w-full overflow-y-auto">
               <div className="p-4 md:p-8 max-w-7xl mx-auto w-full flex-1 flex flex-col gap-6">
 
-                {/* OVERVIEW TAB */}
                 {activeTab === "Overview" && (
                   <div className="animate-fade-in flex flex-col gap-6">
                     <div><h2 className="text-2xl md:text-3xl font-bold text-white mb-1">Dashboard</h2><p className="text-sm md:text-base text-gray-400">Your Auto-Parts AI insights.</p></div>
@@ -435,7 +424,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* SALES TAB (WITH COST PRICE + PROFIT MARGIN LOGIC) */}
                 {activeTab === "Sales" && (
                   <div className="animate-fade-in flex flex-col gap-4">
                     <div><h1 className="text-2xl font-bold text-white">AI Pricing</h1><p className="text-sm text-gray-400">Dynamic discount generator with Profit Protection.</p></div>
@@ -465,7 +453,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* MARKETING TAB */}
                 {activeTab === "Marketing" && (
                   <div className="animate-fade-in flex flex-col gap-4">
                     <div><h1 className="text-2xl font-bold text-white">Marketing</h1><p className="text-sm text-gray-400">Email & Recommendations.</p></div>
@@ -475,10 +462,9 @@ export default function App() {
                       <p className="text-[10px] text-gray-500 mb-3">(AI predicts discount based on data.json)</p>
                       <form onSubmit={handleEmailSubmit} className="space-y-3">
                         <input type="text" value={emailData.customer_identifier} onChange={(e) => setEmailData({...emailData, customer_identifier: e.target.value})} className="w-full bg-[#0d0f17] border border-[#2d3348] text-sm text-white rounded-lg py-2.5 px-3 outline-none focus:border-[#00d4ff]" placeholder="Customer ID or Name (e.g. Kasun)"/>
-                        {/* Notice the icon is now removed from here! */}
                         <button type="submit" className="w-full bg-gradient-to-r from-[#00d4ff] to-[#008fb3] text-[#d9dce9] font-bold py-3 rounded-lg text-sm active:scale-95 transition-transform flex justify-center items-center shadow-[0_0_10px_rgba(0,212,255,0.3)] cursor-pointer">
-                         {emailLoading ? "Generating..." : "Predict Discount & Generate"}
-                      </button>
+                           {emailLoading ? "Generating..." : "Predict Discount & Generate"}
+                        </button>
                       </form>
                       {emailResult && (
                         <div className="mt-4 p-4 bg-[#0d0f17] border border-[#00d4ff]/30 rounded-lg">
@@ -517,7 +503,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* RETENTION TAB */}
                 {activeTab === "Retention" && (
                   <div className="animate-fade-in flex flex-col gap-4">
                     <div><h1 className="text-2xl font-bold text-white">Retention AI</h1><p className="text-sm text-gray-400">Auto-predicts churn risk.</p></div>
