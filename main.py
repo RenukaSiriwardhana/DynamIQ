@@ -36,6 +36,8 @@ app.add_middleware(
 )
 
 
+from typing import List
+
 @app.post("/customers/bulk/")
 def create_bulk_customers(customers: List[schemas.CustomerCreate], db: Session = Depends(get_db)):
     added_count = 0
