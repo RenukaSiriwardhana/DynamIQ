@@ -184,7 +184,7 @@ def generate_promo_email(request: schemas.EmailRequestAlt, db: Session = Depends
 
     try:
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-1.5-pro',
             contents=prompt,
         )
         email_text = response.text.strip()
@@ -229,7 +229,7 @@ def recommend_products(request: schemas.RecommendationRequestAlt, db: Session = 
 
     try:
         response = client.models.generate_content(
-            model='gemini-1.5-flash', 
+            model='gemini-1.5-pro', 
             contents=prompt,
         )
         recommendations = [item.strip() for item in response.text.split(',')]
@@ -272,7 +272,7 @@ def get_retention_offer(request: schemas.RetentionRequestAlt, db: Session = Depe
 
     try:
         response = client.models.generate_content(
-            model='gemini-1.5-flash', 
+            model='gemini-1.5-pro', 
             contents=prompt,
         )
         text = response.text
